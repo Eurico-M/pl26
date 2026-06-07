@@ -274,7 +274,9 @@ Para verificar se estamos a usar o ambiente virtual, executar os comandos seguin
 11. No Emacs, abrir um ficheiro de Prolog e fazer `M-x eglot` (`Alt+X`, escrever `eglot`, pressionar `Enter`)
 
 #pagebreak()
-= LSP4YAP
+= Funcionamento
+
+== lsp4yap
 
 Atentemos agora com algum cuidado ao diretório `lsp4yap`.
 
@@ -301,6 +303,8 @@ O ficheiro `yap.py` é o ponto de entrada do nosso servidor. De notar que, no fi
 )
 
 Define que o servidor `pygls` deve correr `yap.py` quando inicia.
+
+É importante recordar que, na configuração do Emacs, nós definimos que a extensão Eglot deve correr o ficheiro `yap.py` quando entra no modo Prolog, "ignorando" assim estas configurações. Esta é mais uma razão para ter escolhido Emacs, a facilidade de ligar o editor de texto com o ficheiro que especificamos diretamente. Os ficheiros de configuração envolventes que o pygls providencia são úteis quando quisermos adaptar este projeto para Visual Studio Code.
 #pagebreak()
 
 No ficheiro `yap.py`, uma função importante é `validate()`:
@@ -361,5 +365,96 @@ No ficheiro `yap.py`, uma função importante é `validate()`:
               )
 
       return document.version,diagnostics
+  ```,
+)
+
+== YAP
+
+Ainda no ficheiro `yap.py`, a função `validate_text()` interage com `engine`, que é inicializado da seguinte maneira:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```python
+  from yap4py.yapi import Engine, EngineArgs
+
+  # [...] #
+
+  def start_yap():
+      eargs.jupyter = True
+      try:
+          engine = Engine( eargs)
+          engine.load_library("lsp")
+      except Exception:
+          print("bad load")
+          engine = None
+      return engine
+  ```,
+)
+
+`yap4py.yapi`, em `$YAP/packages/python`, funciona como um interpretador de Prolog dentro do YAP, capaz de receber instruções em Python e corrê-las em Prolog.
+
+Desta maneira, usamos o compilador YAP como um interpretador de texto Prolog que, em vez de converter esse texto para código máquina, reporta apenas erros sintáticos e informa-nos acerca de tabelas de símbolos, as funcionalidades que requeremos para implementar um LSP.
+
+Assim, voltando a `yap.py`, a linha:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```python
+  data = engine.fun(validate_text(uri,document.source))
+  ```,
+)
+
+É processada pelo `engine`, que é um "interpretador", e corre a função `validate_text(uri,document.source)`. Consegue fazê-lo porque importa a biblioteca `lsp`, que é definida no ficheiro `lsp.yap`, também em `$YAP/packages/python`. Dentro deste ficheiro acontece o seguinte:
+
+#zebraw(
+  highlight-lines: (
+    ..range(8, 10),
+    (10, [Apaga dados anteriores.]),
+    ..range(12, 13),
+    (13, [Abre o texto como uma Stream.]),
+    (15, [Liga o "modo" LSP.]),
+    ..range(17, 18),
+    (18, [Carrega e processa a Stream de texto.]),
+    (20, [Desliga o "modo" LSP.]),
+    (22, [Recolhe todos os erros.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  validate_text(URI,S,Ts) :-
+
+      writeln(user_error, URI),
+
+      string_concat("file://", FileAsS, URI),
+      atom_string(FileAsS, File),
+
+      retractall(def(_,_,_,_,File,_)),
+      retractall(use(_,_,_,_,_,_,_,File,_)),
+      retractall(dec(_,_,_,_,File,_)),
+
+      open(string(S),read,Stream),
+      current_source_module(DefaultModule,user),
+
+      assert(lsp(on)),
+
+      load_files(File,[stream(Stream)]),
+      current_source_module(_,DefaultModule),
+
+      retractall(lsp(_)),
+
+      findall(T,retract(m(T)),Ts).
   ```,
 )
