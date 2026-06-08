@@ -22,7 +22,7 @@
 #show figure.where(kind: image): set figure(supplement: [Figura])
 #show figure.where(kind: table): set figure(supplement: [Tabela])
 
-// Acrescentar números de linha nos blocos de código
+// Acrescentar números de linha, comentários, e outras utilidades nos blocos de código
 #import "@preview/zebraw:0.6.1": *
 #show: zebraw
 
@@ -398,7 +398,7 @@ Ainda no ficheiro `yap.py`, a função `validate_text()` interage com `engine`, 
 
 `yap4py.yapi`, em `$YAP/packages/python`, funciona como um interpretador de Prolog dentro do YAP, capaz de receber instruções em Python e corrê-las em Prolog.
 
-Desta maneira, usamos o compilador YAP como um interpretador de texto Prolog que, em vez de converter esse texto para código máquina, reporta apenas erros sintáticos e informa-nos acerca de tabelas de símbolos, as funcionalidades que requeremos para implementar um LSP.
+Desta maneira, usamos o compilador YAP como um interpretador de texto Prolog que, em vez de converter esse texto para código máquina (como o faria em "modo de compilador"), reporta apenas erros sintáticos e informa-nos acerca de tabelas de símbolos, as funcionalidades que requeremos para implementar um LSP.
 
 Assim, voltando a `yap.py`, a linha:
 
@@ -414,7 +414,7 @@ Assim, voltando a `yap.py`, a linha:
   ```,
 )
 
-É processada pelo `engine`, que é um "interpretador", e corre a função `validate_text(uri,document.source)`. Consegue fazê-lo porque importa a biblioteca `lsp`, que é definida no ficheiro `lsp.yap`, também em `$YAP/packages/python`. Dentro deste ficheiro acontece o seguinte:
+É processada pelo `engine`, que é um "interpretador", e corre a função `validate_text(uri,document.source)`. Consegue fazê-lo porque importa a biblioteca `lsp`, que é definida no ficheiro `lsp.yap`, também em `$YAP/packages/python`. Dentro deste ficheiro está definido o predicado correspondente, `validate_text/3`:
 
 #zebraw(
   highlight-lines: (
@@ -456,5 +456,213 @@ Assim, voltando a `yap.py`, a linha:
       retractall(lsp(_)),
 
       findall(T,retract(m(T)),Ts).
+  ```,
+)
+
+Em Prolog, existem predicados chamadas _hooks_ que são corridos automaticamente pelo YAP#footnote[https://www.swi-prolog.org/pldoc/man?section=hooks]. Assim, a linha `load_files(File,[stream(Stream)])` ativa o hook `term_expansion/2`, que é (re)definido neste ficheiro:
+
+#zebraw(
+  highlight-lines: (
+    (3, [Só corre se estivermos no "modo" LSP]),
+    (10, [Analisa o termo Prolog]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  user:term_expansion(G, GF) :-
+
+      lsp(on),
+
+      prolog_load_context(file, F ),
+      prolog_load_context(term_position, Pos ),
+      current_source_module(M, M ),
+      arg(2, Pos, Line),
+
+      analyse(G,Line,F,M,GF),
+      !.
+  ```,
+)
+
+`analyse/5` descobre que tipo de termo Prolog estamos a tratar:
+
+#zebraw(
+  highlight-lines: (
+    ..range(1, 3),
+    (3, [Cláusulas que só têm corpo.]),
+    ..range(5, 6),
+    (6, [Outras cláusulas só com corpo.]),
+    ..range(8, 9),
+    (9, [Cláusulas de Factos e Regras, a maioria do casos.]),
+    ..range(11, 13),
+    (13, [O resto que não for apanhado pelos casos anteriores.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  analyse((:- G), L, F, M, (:- true)) :-
+      !,
+      directive(G, L, F, M).
+
+  analyse((:- _G), _L, _F, _M, (:- true)) :-
+      !.
+
+  analyse(Cl, L, F, M, Na) :-
+      rule(Cl, L, F, M, Na).
+
+  analyse(_G, _L, _F, _M,  Na) :-
+      strip_module(G,_MH,A),
+      functor(A,Na,_Ar).
+  ```,
+)
+
+O caso mais comum é uma Cláusula de Factos ou Regras. Relembremos que Factos são do tipo:
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```prolog
+  p(a).
+  ```,
+)
+E Regras são:
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```prolog
+  q(a) :- p(a).
+  ```,
+)
+
+Portanto, para explorar estes casos, usamos o predicado `rule/5`:
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  rule((A0:- B),Line,File,Module,Na) :-
+      strip_module(Module:A0,MH,A),
+      functor(A,Na,Ar),
+      (
+      def(Na,Ar,MH,_,_,predicate)
+         ->
+      true
+         ;
+      assert(def(Na,Ar,MH,Line,File,predicate))
+      ),
+      body(B,Line,File,Module,MH:Na/Ar).
+  ```,
+)
+
+
+O predicado seguinte, que também é um hook, corre quando o YAP deteta um erro#footnote[https://sicstus.sics.se/sicstus/docs/3.12.10/html/sicstus/Message-Handling-Predicates.html]. Neste caso, `term_expansion/2` não é chamado, mas sim este predicado:
+
+#zebraw(
+  highlight-lines: (
+    (6, [Converte a mensagem num tuplo]),
+    (9, [Guarda esse tuplo na base de dados]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  user:portray_message(A,B):-
+      lsp(on),
+      !,
+      writeln(user_error,B),
+      (
+       q_msg(A,B,T),
+       A \= "ignored"
+      ->
+       assert(m(T))
+        ;
+      true
+      ).
+  ```,
+)
+
+`q_msg/3` filtra os vários tipos de mensagens geradas pelo YAP, e devolve as que são úteis ao LSP em tuplos `t(Severity, Message, StartLine, StartColumn, EndLine, EndColumn)`:
+
+#zebraw(
+  highlight-lines: (
+    ..range(1, 7),
+    (7, [Mensagens informacionais ou de ajuda são ignoradas.]),
+    ..range(9, 13),
+    (
+      13,
+      [Um aviso que reporta erros de singletons é formatado num tuplo de tipo "warning", com a string definida aqui, e a sua localização em linhas e colunas.],
+    ),
+    ..range(15, 21),
+    (21, [O mesmo predicado definido múltiplas vezes.]),
+    ..range(23, 30),
+    (30, [Cláusulas do mesmo predicado que não estão agrupadas.]),
+    ..range(32, 37),
+    (37, [Erros sintáticos.]),
+    ..range(39, 40),
+    (40, [Quaisquer outros erros.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  q_msg(informational, _, _) :-
+      !,
+      fail.
+
+  q_msg(help, _, _) :-
+      !,
+      fail.
+
+  q_msg(warning, error(style_check(singletons,[VName,Line,Column,_F0],_),_Desc),t("warning",S, Line,Column, Line,EndCol)) :-
+      !,
+      format(string(S), 'singleton variable ~s.~n ', [VName]),
+      atom_length(VName, Len),
+      EndCol is Column+Len.
+
+   q_msg(warning, error(style_check(multiple,[F0|L],I ) ,_Desc ), t("warning",S, L,Column,L,EndCol)) :-
+      !,
+      Column=1,
+      format(string(S), '~w previously defined at ~s.~n',[I,F0]),
+      I = Name/_,
+      atom_length(Name, Len),
+      EndCol is Column+Len.
+
+  q_msg(warning, error(style_check(discontiguous,_,_I ), _Desc), t("warning",S, L,Column, L, EndCol)) :-
+      !,
+      Column=1,
+      format(string(S), 'discontiguous definition for ~w.~n',[I]),
+      I = Name/_,
+      atom_length(Name, Len),
+      EndCol is Column+Len,
+      S = "discontiguous.~n".
+
+  q_msg(_error, error(syntax_error(_Msg), Desc),  t("error","syntax error", L,LPos,L,LP1)) :-
+      exception_property(parserLine, Desc, L),
+      exception_property(parserLinePos, Desc, LPos),
+      exception_property(parserSize, Desc, Size),
+      !,
+      LP1 is LPos+Size.
+
+  q_msg(_,Error,t("ignored",Msg,1,0,2,0)) :-
+      term_to_string(Error,Msg).
   ```,
 )
