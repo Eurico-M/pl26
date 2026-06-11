@@ -100,6 +100,7 @@ Por exemplo, o código seguinte recebe um documento e, em cada linha que acabe e
 
 #pagebreak()
 #zebraw(
+  header: [*Exemplo de um lsp.py*],
   highlight-lines: (
     (9, [O autocompletar só aparece quando se insere um "."]),
     ..range(19, 20),
@@ -181,13 +182,13 @@ Procedemos da seguinte maneira:
 #zebraw(
   numbering: false,
   ```bash
-  source ./$ENV/bin/activate
+  source $ENV/bin/activate
   ```,
 )
 #zebraw(
   numbering: false,
   ```fish
-  source ./$ENV/bin/activate.fish
+  source $ENV/bin/activate.fish
   ```,
 )
 Para verificar se estamos a usar o ambiente virtual, executar os comandos seguintes e confirmar que o caminho devolvido é em `$ENV`:
@@ -282,6 +283,7 @@ Atentemos agora com algum cuidado ao diretório `lsp4yap`.
 
 O ficheiro `yap.py` é o ponto de entrada do nosso servidor. De notar que, no ficheiro `packages.json`, alguma variáveis devem ser definidas. Por exemplo:
 #zebraw(
+  header: [*packages.json*],
   numbering-separator: true,
   ```json
   "configuration": [
@@ -310,6 +312,7 @@ Define que o servidor `pygls` deve correr `yap.py` quando inicia.
 No ficheiro `yap.py`, uma função importante é `validate()`:
 
 #zebraw(
+  header: [*yap.py*],
   highlight-lines: (
     (4, [Este array de Diagnostics é preenchido com os vários erros]),
     (
@@ -373,6 +376,7 @@ No ficheiro `yap.py`, uma função importante é `validate()`:
 Ainda no ficheiro `yap.py`, a função `validate_text()` interage com `engine`, que é inicializado da seguinte maneira:
 
 #zebraw(
+  header: [*yap.py*],
   highlight-lines: (),
   comment-flag: "",
   comment-font-args: (
@@ -417,6 +421,7 @@ Assim, voltando a `yap.py`, a linha:
 É processada pelo `engine`, que é um "interpretador", e corre a função `validate_text(uri,document.source)`. Consegue fazê-lo porque importa a biblioteca `lsp`, que é definida no ficheiro `lsp.yap`, também em `$YAP/packages/python`. Dentro deste ficheiro está definido o predicado correspondente, `validate_text/3`:
 
 #zebraw(
+  header: [*lsp.yap*],
   highlight-lines: (
     ..range(8, 10),
     (10, [Apaga dados anteriores.]),
@@ -462,6 +467,7 @@ Assim, voltando a `yap.py`, a linha:
 Em Prolog, existem predicados chamadas _hooks_ que são corridos automaticamente pelo YAP#footnote[https://www.swi-prolog.org/pldoc/man?section=hooks]. Assim, a linha `load_files(File,[stream(Stream)])` ativa o hook `term_expansion/2`, que é (re)definido neste ficheiro:
 
 #zebraw(
+  header: [*lsp.yap*],
   highlight-lines: (
     (3, [Só corre se estivermos no "modo" LSP]),
     (10, [Analisa o termo Prolog]),
@@ -489,6 +495,7 @@ Em Prolog, existem predicados chamadas _hooks_ que são corridos automaticamente
 `analyse/5` descobre que tipo de termo Prolog estamos a tratar:
 
 #zebraw(
+  header: [*lsp.yap*],
   highlight-lines: (
     ..range(1, 3),
     (3, [Cláusulas que só têm corpo.]),
@@ -548,6 +555,7 @@ E Regras são:
 
 Portanto, para explorar estes casos, usamos o predicado `rule/5`:
 #zebraw(
+  header: [*lsp.yap*],
   highlight-lines: (),
   comment-flag: "",
   comment-font-args: (
@@ -573,6 +581,7 @@ Portanto, para explorar estes casos, usamos o predicado `rule/5`:
 O predicado seguinte, que também é um hook, corre quando o YAP deteta um erro#footnote[https://sicstus.sics.se/sicstus/docs/3.12.10/html/sicstus/Message-Handling-Predicates.html]. Neste caso, `term_expansion/2` não é chamado, mas sim este predicado:
 
 #zebraw(
+  header: [*lsp.yap*],
   highlight-lines: (
     (6, [Converte a mensagem num tuplo]),
     (9, [Guarda esse tuplo na base de dados]),
@@ -601,6 +610,7 @@ O predicado seguinte, que também é um hook, corre quando o YAP deteta um erro#
 `q_msg/3` filtra os vários tipos de mensagens geradas pelo YAP, e devolve as que são úteis ao LSP em tuplos `t(Severity, Message, StartLine, StartColumn, EndLine, EndColumn)`:
 
 #zebraw(
+  header: [*lsp.yap*],
   highlight-lines: (
     ..range(1, 7),
     (7, [Mensagens informacionais ou de ajuda são ignoradas.]),
@@ -666,3 +676,417 @@ O predicado seguinte, que também é um hook, corre quando o YAP deteta um erro#
       term_to_string(Error,Msg).
   ```,
 )
+
+= Alternativas
+
+Seguem-se algumas alternativas que explorámos ao longo do trabalho, por vários motivos, o principal dos quais a simples exploração académica.
+
+== Expressões Regulares
+
+Num primeiro encontro com o pygls, a maioria dos exemplos fornecidos na documentação envolvem alterar apenas o ficheiro principal Python (no nosso caso, `yap.py`). Deste modo, este ficheiro não dependeria de nada, para além das dependências intrínsecas ao pygls.
+
+Usando o exemplo de Publish Diagnostics da documentação do pygls#footnote[https://pygls.readthedocs.io/en/latest/servers/examples/publish-diagnostics.html] como base, é relativamente simples construir o seguinte ficheiro, que reconhece apenas factos e regras de prolog:
+
+#zebraw(
+  header: [*regex-linebyline.py*],
+  highlight-lines: (
+    (9, [Facto: "p(a)."]),
+    (10, [Regra: "q(a) :- p(a)."]),
+    ..range(23, 25),
+    (25, [Em cada linha do documento, verificar se é um facto ou uma regra.]),
+    ..range(27, 40),
+    (40, [Se não for um facto ou uma regra, marcar toda a linha como um erro.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```python
+  import logging
+  import re
+
+  from lsprotocol import types
+  from pygls.cli import start_server
+  from pygls.lsp.server import LanguageServer
+  from pygls.workspace import TextDocument
+
+  FACT = re.compile(r"^\s*([a-z]\w*)\(((\s*\w+\s*\,*\s*)+)\)\s*\.$")
+  RULE = re.compile(r"^\s*([a-z]\w*)\(((\s*\w+\s*\,*\s*)+)\)\s*\:\-\s*(([a-z]\w*)\(((\s*\w+\s*\,*\s*)+)\)\s*[\,\;]?\s*)+\.$")
+
+
+  class PublishDiagnosticServer(LanguageServer):
+      """Language server demonstrating "push-model" diagnostics."""
+
+      def __init__(self, *args, **kwargs):
+          super().__init__(*args, **kwargs)
+          self.diagnostics = {}
+
+      def parse(self, document: TextDocument):
+          diagnostics = []
+
+          for idx, line in enumerate(document.lines):
+              fact = FACT.match(line)
+              rule = RULE.match(line)
+
+              if fact is None and rule is None:
+                  message = "Not a fact or rule"
+                  severity = types.DiagnosticSeverity.Error
+
+                  diagnostics.append(
+                      types.Diagnostic(
+                          message=message,
+                          severity=severity,
+                          range=types.Range(
+                              start=types.Position(line=idx, character=0),
+                              end=types.Position(line=idx, character=len(line) - 1),
+                          ),
+                      )
+                  )
+
+          self.diagnostics[document.uri] = (document.version, diagnostics)
+          # logging.info("%s", self.diagnostics)
+
+
+  server = PublishDiagnosticServer("diagnostic-server", "v1")
+
+
+  @server.feature(types.TEXT_DOCUMENT_DID_OPEN)
+  def did_open(ls: PublishDiagnosticServer, params: types.DidOpenTextDocumentParams):
+      """Parse each document when it is opened"""
+      doc = ls.workspace.get_text_document(params.text_document.uri)
+      ls.parse(doc)
+
+      for uri, (version, diagnostics) in ls.diagnostics.items():
+          ls.text_document_publish_diagnostics(
+              types.PublishDiagnosticsParams(
+                  uri=uri,
+                  version=version,
+                  diagnostics=diagnostics,
+              )
+          )
+
+
+  @server.feature(types.TEXT_DOCUMENT_DID_CHANGE)
+  def did_change(ls: PublishDiagnosticServer, params: types.DidOpenTextDocumentParams):
+      """Parse each document when it is changed"""
+      doc = ls.workspace.get_text_document(params.text_document.uri)
+      ls.parse(doc)
+
+      for uri, (version, diagnostics) in ls.diagnostics.items():
+          ls.text_document_publish_diagnostics(
+              types.PublishDiagnosticsParams(
+                  uri=uri,
+                  version=version,
+                  diagnostics=diagnostics,
+              )
+          )
+
+
+  if __name__ == "__main__":
+      logging.basicConfig(level=logging.INFO, format="%(message)s")
+      start_server(server)
+
+  ```,
+)
+
+É obviamente um LSP muito básico, e a maneira como iteramos pelo documento (linha a linha) impede que este sistema consiga detetar blocos multi-linha. É útil apenas para ficheiros prolog de factos e regras, um por linha.
+
+#figure(
+  image("images/regex-emacs.png", width: 50%),
+  caption: [Falta de um ponto final na segunda linha é detetado.],
+)
+
+== Gramática Independente de Contexto
+
+Uma ferramenta mais poderosa para este tipo de aplicação seria uma gramática independente de contexto (CFG). Se conseguirmos alimentar o texto completo do documento a uma gramática que reconheça Prolog, e que reporte erros com expressão suficiente para o nosso caso de uso, teremos construído um LSP interessante.
+
+Para a gramática de Prolog o professor apontou-nos para o Tree Sitter de Prolog#footnote[https://github.com/DataGrout/tree-sitter-grammars/blob/main/tree-sitter-prolog/grammar.js], que define por completo a CFG do Prolog.
+
+Para construir este sistema encontrámos o PLY#footnote[https://github.com/dabeaz/ply]#super[,]#footnote[https://ply.readthedocs.io/en/latest/ply.html], uma implementação em Python das ferramentas lex#footnote[https://en.wikipedia.org/wiki/Lex_(software)] e Yacc#footnote[https://en.wikipedia.org/wiki/Yacc]. O que é relevante porque o nosso grupo usou ferramentas análogas (Flex#footnote[[https://ftp.gnu.org/old-gnu/Manuals/flex-2.5.4/html_mono/flex.html]] e GNU Bison#footnote[https://www.gnu.org/software/bison/manual/html_node/index.html#SEC_Contents]) para construir um compilador em C#footnote[https://github.com/Eurico-M/compiladores/tree/main], na Unidade Curricular de Compiladores no primeiro semestre.
+
+Usando a nossa (pouca) experiência em GNU Bison desse trabalho, construímos uma gramática simples (a notação é a que é usada pelo Bison, uma adaptação de Backus–Naur form#footnote[https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form]):
+
+#zebraw(
+  header: [*CFG simples*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```bnf
+  source_file
+      : clauses
+      ;
+
+  clauses
+      : clauses clause
+      | clause
+      ;
+
+  clause
+      : fact
+      | rule
+      ;
+
+  fact
+      : ATOM "(" arglist ")" "."
+      ;
+
+  rule
+      : ATOM "(" arglist ")" ":-" body "."
+      ;
+
+  body
+      : ATOM "(" arglist ")"
+      | ATOM "(" arglist ")" "," body
+      ;
+
+  arglist
+      : term
+      | term "," arglist
+      ;
+
+  term
+      : ATOM
+      | VARIABLE
+      | NUMBER
+      | ATOM "(" arglist ")"
+      ;
+  ```,
+)
+
+Nesta gramática, um ficheiro é uma lista de cláusulas (definida recursivamente). Uma cláusula é um facto ou uma regra, que são definidos seguidamente. Seguindo a notação de Prolog, átomos e variáveis são diferentes (átomos começam por letras minúsculas, variáveis por letras maiúsculas).
+
+Para implementar esta gramática, precisamos primeiro de criar tokens a partir do nosso ficheiro de texto. Para isso usamos a parte Lex do PLY:
+
+#zebraw(
+  header: [*simple-cfg.py*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```python
+  import ply.lex as lex
+
+  tokens = (
+      "ATOM",
+      "VARIABLE",
+      "NUMBER",
+      "COMMA",
+      "LPAREN",
+      "RPAREN",
+      "IMPLIES",
+      "PERIOD",
+  )
+
+  t_COMMA = r","
+  t_LPAREN = r"\("
+  t_RPAREN = r"\)"
+  t_IMPLIES = r":-"
+  t_PERIOD = r"\."
+  t_VARIABLE = r"[A-Z_][a-zA-Z0-9_]*"
+  t_ATOM = r"[a-z][a-zA-Z0-9_]*"
+  t_NUMBER = r"[0-9]+"
+
+  t_ignore = " \t\r"
+  t_ignore_COMMENT = r"%[^\n]*"
+
+
+  def t_newline(t):
+      r"\n+"
+      t.lexer.lineno += len(t.value)
+
+
+  def t_error(t):
+      raise SyntaxError(f"Illegal character '{t.value[0]}' at line {t.lineno}")
+
+
+  lexer = lex.lex()
+  ```,
+)
+
+Definimos os nossos tokens, as expressões regulares que os definem, e funções auxiliares para contar números de linha e lidar com caracteres desconhecidos.
+
+Com o tokenizer construído, podemos fazer um parser ao estilo do Yacc/Bison:
+
+#zebraw(
+  header: [*simple-cfg.py*],
+  highlight-lines: (
+    ..range(3, 7),
+    (
+      7,
+      [No comentário da função temos a definição da regra gramatical, e depois temos uma notação inspirada pelo Yacc, `$$ = $1`, ou seja, o source_file é o resultado de uma lista de clauses.],
+    ),
+    ..range(25, 27),
+    (27, [Aqui definimos valores que são guardados no nó da AST.]),
+    ..range(69, 74),
+    (
+      74,
+      [Aproveitamos o SyntaxError do Python para guardar, para além da string de erro, informação do número de linha (e, eventualmente, coluna, que para já é 0).],
+    ),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```python
+  import ply.yacc as yacc
+
+  def p_source_file(p):
+      """source_file : clauses
+      | empty"""
+      if len(p) == 2:
+          p[0] = p[1]
+
+
+  def p_clauses(p):
+      """clauses : clauses clause
+      | clause"""
+      if len(p) == 3:
+          p[0] = p[1] + [p[2]]
+      else:
+          p[0] = [p[1]]
+
+
+  def p_clause(p):
+      """clause : fact
+      | rule"""
+      p[0] = p[1]
+
+
+  def p_fact(p):
+      """fact : ATOM LPAREN arglist RPAREN PERIOD"""
+      p[0] = ("fact", p[1], p[3], p.lineno(1))
+
+
+  def p_rule(p):
+      """rule : ATOM LPAREN arglist RPAREN IMPLIES body PERIOD"""
+      p[0] = ("rule", p[1], p[3], p[6], p.lineno(1))
+
+
+  def p_body(p):
+      """body : ATOM LPAREN arglist RPAREN
+      | ATOM LPAREN arglist RPAREN COMMA body"""
+      if len(p) == 5:
+          p[0] = [(p[1], p[3])]
+      else:
+          p[0] = [(p[1], p[3])] + p[6]
+
+
+  def p_arglist(p):
+      """arglist : term
+      | term COMMA arglist"""
+      if len(p) == 2:
+          p[0] = [p[1]]
+      else:
+          p[0] = [p[1]] + p[3]
+
+
+  def p_term(p):
+      """term : ATOM
+      | VARIABLE
+      | NUMBER
+      | ATOM LPAREN arglist RPAREN"""
+      if len(p) == 2:
+          p[0] = p[1]
+      else:
+          p[0] = (p[1], p[3])
+
+
+  def p_empty(p):
+      """empty :"""
+      p[0] = []
+
+
+  def p_error(p):
+      if p:
+          raise SyntaxError(
+              f"Syntax error at '{p.value}' (line {p.lineno})",
+              ("error", p.lineno, 0, "error"),
+          )
+
+
+  parser = yacc.yacc()
+  ```,
+)
+
+Repare-se que, como é expectável de um parser, podemos construir uma Abstract Syntax Tree. Assim, esta informação pode ser usada pelo nosso LSP para todas as funções mais complexas (análise semântica, _go-to-definition_, encontrar referências, etc.).
+
+Estas funções não foram ainda implementadas no ficheiro exemplo `simple-cfg.py`. De facto, a nossa função `parse()` é bastante simples:
+
+
+#zebraw(
+  header: [*simple-cfg.py*],
+  highlight-lines: (
+    (
+      7,
+      [O resultado do parser é a AST, e poderia ser usado para várias funções do LSP. Aqui está simplesmente a ser ignorado (e imprimido directamente).],
+    ),
+    ..range(9, 14),
+    (14, [Podemos ver o resultado da impressão no buffer das mensagens de EGLOT no Emacs.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```python
+  def parse(self, document: TextDocument):
+      diagnostics = []
+
+      try:
+          lexer.lineno = 1
+
+          result = parser.parse(document.source, lexer=lexer)
+
+          if DEBUG:
+              import sys
+
+              print("--- AST ---", file=sys.stderr)
+              print(result, file=sys.stderr)
+              print("--- END OF AST ---", file=sys.stderr)
+
+      except SyntaxError as e:
+
+          if e.lineno is not None:
+              error_line = e.lineno - 1
+          else:
+              error_line = 0
+
+          line_length = len(document.lines[error_line])
+
+          diagnostics.append(
+              types.Diagnostic(
+                  message=str(e),
+                  severity=types.DiagnosticSeverity.Error,
+                  range=types.Range(
+                      start=types.Position(line=error_line, character=0),
+                      end=types.Position(line=error_line, character=line_length),
+                  ),
+              )
+          )
+
+      self.diagnostics[document.uri] = (document.version, diagnostics)
+  ```,
+)
+
+É uma função muito simples que serve apenas de exemplo, e carece de vários melhoramentos. Por exemplo, só assinalamos a linha onde o erro é reportado, não calculamos a coluna. Mas o mais crucial, o parser só lida com um erro. Se houver dois erros no ficheiro, só lidámos com o primeiro que for apanhado pelo parser. Para isso, teríamos que acrescentar recuperação de erros ao nosso parser.
+
+Podemos, para já, ver a AST que é construída pelo PLY.
+
+#figure(
+  image("images/cfg-emacs.png", width: 50%),
+  caption: [Simples base de dados Prolog com facto e regra.],
+)
+
+#figure(
+  image("images/ast-emacs.png", width: 100%),
+  caption: [AST imprimida no buffer do EGLOT.],
+)
+
+Podemos ver que a nossa AST é constituída por um `fact`, `p`, que tem como argumentos `a`, na linha 1, e uma `rule`, `q`, com argumentos `a` e cujo corpo é uma lista, neste caso unitária, `p` com argumentos `a`, na linha 3.
