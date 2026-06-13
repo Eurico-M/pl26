@@ -404,6 +404,8 @@ Ainda no ficheiro `yap.py`, a função `validate_text()` interage com `engine`, 
 
 Desta maneira, usamos o compilador YAP como um interpretador de texto Prolog que, em vez de converter esse texto para código máquina (como o faria em "modo de compilador"), reporta apenas erros sintáticos e informa-nos acerca de tabelas de símbolos, as funcionalidades que requeremos para implementar um LSP.
 
+== validate_text/3
+
 Assim, voltando a `yap.py`, a linha:
 
 #zebraw(
@@ -419,6 +421,8 @@ Assim, voltando a `yap.py`, a linha:
 )
 
 É processada pelo `engine`, que é um "interpretador", e corre a função `validate_text(uri,document.source)`. Consegue fazê-lo porque importa a biblioteca `lsp`, que é definida no ficheiro `lsp.yap`, também em `$YAP/packages/python`. Dentro deste ficheiro está definido o predicado correspondente, `validate_text/3`:
+
+#pagebreak()
 
 #zebraw(
   header: [*lsp.yap*],
@@ -464,6 +468,10 @@ Assim, voltando a `yap.py`, a linha:
   ```,
 )
 
+#pagebreak()
+
+== term_expansion/2
+
 Em Prolog, existem predicados chamadas _hooks_ que são corridos automaticamente pelo YAP#footnote[https://www.swi-prolog.org/pldoc/man?section=hooks]. Assim, a linha `load_files(File,[stream(Stream)])` ativa o hook `term_expansion/2`, que é (re)definido neste ficheiro:
 
 #zebraw(
@@ -491,6 +499,8 @@ Em Prolog, existem predicados chamadas _hooks_ que são corridos automaticamente
       !.
   ```,
 )
+
+== analyze/5
 
 `analyse/5` descobre que tipo de termo Prolog estamos a tratar:
 
@@ -528,6 +538,8 @@ Em Prolog, existem predicados chamadas _hooks_ que são corridos automaticamente
   ```,
 )
 
+== rule/5
+
 O caso mais comum é uma Cláusula de Factos ou Regras. Relembremos que Factos são do tipo:
 #zebraw(
   highlight-lines: (),
@@ -554,6 +566,48 @@ E Regras são:
 )
 
 Portanto, para explorar estes casos, usamos o predicado `rule/5`:
+
+#zebraw(
+  header: [*lsp.yap*],
+  highlight-lines: (
+    ..range(3, 4),
+    (4, [Extrair nome do predicado, o seu módulo e argumentos.]),
+    ..range(7, 9),
+    (9, [Verificar se a definição desse predicado já existe. Se existir, não fazer nada.]),
+    (11, [Se não existir, guardar na base de dados.]),
+    (14, [Analisar o Corpo da Regra.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  rule((A0:- B),Line,File,Module,Na) :-
+
+      strip_module(Module:A0,MH,A),
+      functor(A,Na,Ar),
+
+      (
+      def(Na,Ar,MH,_,_,predicate)
+         ->
+      true
+         ;
+      assert(def(Na,Ar,MH,Line,File,predicate))
+      ),
+
+      body(B,Line,File,Module,MH:Na/Ar).
+  ```,
+)
+
+Aqui encontramos o que pensamos ser um _bug_. Repare-se que ao fazer _pattern matching_ no predicado `analyze/5`, uma cláusula do tipo Facto ou Regra seria apanhada pela terceira regra de `analyze/5`.
+
+No entanto, essa regra chama o predicado `rule/5`. Este predicado só faz _pattern matching_ com Regras (`A0 :- B`). Assim, Factos não são guardados na base de dados que depois será usada (eventualmente) para funções do LSP como _go-to-definitions_, análise semântica, entre outras.
+
+#pagebreak()
+
+Uma possível solução seria acrescentar o código seguinte ao predicado `rule/5`:
+
 #zebraw(
   header: [*lsp.yap*],
   highlight-lines: (),
@@ -563,20 +617,118 @@ Portanto, para explorar estes casos, usamos o predicado `rule/5`:
   ),
   numbering-separator: true,
   ```prolog
-  rule((A0:- B),Line,File,Module,Na) :-
-      strip_module(Module:A0,MH,A),
-      functor(A,Na,Ar),
+  rule(A0, Line, File, Module, Na) :-
+      strip_module(Module:A0, MH, A),
+      functor(A, Na, Ar),
       (
-      def(Na,Ar,MH,_,_,predicate)
-         ->
-      true
-         ;
-      assert(def(Na,Ar,MH,Line,File,predicate))
-      ),
-      body(B,Line,File,Module,MH:Na/Ar).
+          def(Na, Ar, MH, _, _, predicate)
+      ->
+          true
+      ;
+          assert(def(Na, Ar, MH, Line, File, predicate))
+      ).
   ```,
 )
 
+== body/5
+
+O corpo de uma regra é tratado pelo predicado `body/5`:
+
+#zebraw(
+  header: [*lsp.yap*],
+  highlight-lines: (
+    ..range(1, 3),
+    (3, [Variáveis são ignoradas.]),
+    ..range(24, 26),
+    (26, [Caso Base para o qual as outras regras convergem. Guardamos os vários predicados do corpo na base de dados.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  body(A,_L,_F,_M,_) :-
+      var(A),
+  !.
+
+  body(M:A,L,F,_M,P0) :-
+      !,
+      body(A,L,F,M,P0).
+
+  body((A,B),L,F,M,P0) :-
+      !,
+      body(A,L,F,M,P0),
+      body(B,L,F,M,P0).
+
+  body((A;B),L,F,M,P0) :-
+      !,
+      body(A,L,F,M,P0),
+      body(B,L,F,M,P0).
+
+  body((A->B),L,F,M,P0) :-
+      !,
+      body(A,L,F,M,P0),
+      body(B,L,F,M,P0).
+
+  body(A,L,F,M,M0:Na0/Ar0) :-
+      functor(A,NA,Ar),
+      assert(use(NA,Ar,M,Na0,Ar0,M0,L,F,predicate)).
+  ```,
+)
+
+== directive/4
+
+Ainda a partir do predicado `analyze/5`, se encontrarmos uma directiva, ela é processada pelo predicado `directive/4`:
+
+#zebraw(
+  header: [*lsp.yap*],
+  highlight-lines: (
+    ..range(1, 5),
+    (5, [Uma directiva do tipo `module` é guardada na base de dados, incluindo os seus `export`.]),
+  ),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  directive(module(M,Ls),L,F,M0) :-
+      assert(def('',0,M,L,F,module)),
+      assert(use('',0,M,'',0,M0,L,F,module)),
+      current_source_module(M0,M),
+      maplist(mod(L,F,M),Ls).
+
+  directive(op(A,B,C), _Line,_File,M) :-
+      op(A,B,M:C).
+
+  directive(use_module(_A), _Line,_File,_M) :-
+      !.
+  directive(use_module(_A,_B), _Line,_File,_M) :-
+      !.
+  directive(load_files(_A,_B), _Line,_File,_M) :-
+      !.
+  directive(ensure_loaded(_A), _Line,_File,_M) :-
+      !.
+  directive(consult(_A), _Line,_File,_M) :-
+      !.
+  directive(reconsult(_A), _Line,_File,_M) :-
+      !.
+  directive(compile(_A), _Line,_File,_M) :-
+      !.
+  directive(use_module(_A,_B,_C), _Line,_File,_M) :-
+      !.
+
+  directive((A,B), Line,File,M) :-
+      !,
+      directive(A, Line,File,M),
+      directive(B, Line,File,M).
+  ```,
+)
+
+#pagebreak()
+
+== portray_message/2 e q_msg/3
 
 O predicado seguinte, que também é um hook, corre quando o YAP deteta um erro#footnote[https://sicstus.sics.se/sicstus/docs/3.12.10/html/sicstus/Message-Handling-Predicates.html]. Neste caso, `term_expansion/2` não é chamado, mas sim este predicado:
 
@@ -676,6 +828,8 @@ O predicado seguinte, que também é um hook, corre quando o YAP deteta um erro#
       term_to_string(Error,Msg).
   ```,
 )
+
+#pagebreak()
 
 = Alternativas
 
@@ -1090,3 +1244,19 @@ Podemos, para já, ver a AST que é construída pelo PLY.
 )
 
 Podemos ver que a nossa AST é constituída por um `fact`, `p`, que tem como argumentos `a`, na linha 1, e uma `rule`, `q`, com argumentos `a` e cujo corpo é uma lista, neste caso unitária, `p` com argumentos `a`, na linha 3.
+
+#pagebreak()
+
+= Conclusão
+
+O trabalho realizado foi singular, na medida em que envolveu o estudo e compreensão de vários componentes e a sua interação. De certo modo, fez-nos lembrar o trabalho de desenvolver um compilador na Unidade Curricular de Compiladores.
+
+Apesar de não ser um trabalho desenvolvido totalmente em Prolog, ganhámos uma compreensão desta linguagem, através do estudo da sua Gramática Independente de Contexto, e principalmente da análise do ficheiro `lsp.yap`.
+
+Os vários componentes do projeto requereram o uso de Prolog, Python, JSON, TypeScript (numa fase inicial de integração com o VSCode), Lisp (quando Emacs substituiu VSCode), o que para os membros mais generalistas do grupo foi um aspeto positivo e enriquecedor (ainda que por vezes complexo).
+
+Sem a ajuda do professor, a nossa intuição seria seguir o caminho descrito no capítulo Alternativas: construir um parser da gramática de Prolog, capaz de criar uma Abstract Syntax Tree útil para as funcionalidades do LSP, e capaz de reportar erros de uma maneira robusta suficiente para uso no LSP.
+
+É possível que também tivéssemos ficado um pouco perdidos na complexidade de implementar uma extensão de Visual Studio Code, que estudámos inicialmente, e cujo _debugging_ se começava a revelar moroso. Assim, outra vantagem deste trabalho foi o facto de nos expôr ao Emacs. Por ser simples de personalizar (através da sua configuração escrita em Lisp) e com o seu sistema de _buffers_ que expõe várias mensagens úteis, percebemos porque é que este programa ainda é usado atualmente.
+
+Temos assim várias avenidas de exploração para o futuro: projectos em Prolog, em particular alguns dos outros trabalhos mencionados pelo professor nas aulas (interrogação de bases de dados e jogos são dois projetos que considerámos como alternativa); extensões de Visual Studio Code; LSP vs Tree Sitter, e outros sistemas de análise sintática e semântica de código fonte, e a sua integração com editores de texto e IDEs; o uso de Emacs; entre outras.
