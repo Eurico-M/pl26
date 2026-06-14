@@ -831,6 +831,50 @@ O predicado seguinte, que também é um hook, corre quando o YAP deteta um erro#
 
 #pagebreak()
 
+= Problemas
+
+O projeto encontra-se ainda em fase de desenvolvimento, tendo sido encontrados vários problemas ao longo do semestre.
+
+Em primeiro lugar, e já mencionado acima, a intenção original era desenvolver uma extensão para o Visual Studio Code. No entanto, a excessiva burocracia e complexidade do VSCode levaram-nos, com a sugestão do professor, a desenvolver primeiro a parte do servidor LSP, e para isso usámos o Emacs, para ter o mínimo de fricção da parte do cliente/editor de texto.
+
+Porém, também na parte do servidor encontrámos problemas que não conseguimos resolver dentro do prazo.
+
+O primeiro destes, que não deve ser menosprezado, é o entender o projeto em si. Este é o nosso primeiro contacto com uma linguagem lógica como o Prolog. Apesar de sermos familiares com linguagens funcionais, nós preferimos linguagens imperativas (por exemplo, no semestre passado, na Unidade Curricular de Compiladores, quando enfrentados com a escolha de escrever um compilador em Haskell ou C, escolhemos C). Assim, saltar de cabeça para um projeto tão complexo como este requereu estudar o código linha a linha, antes de tentar sequer implementar alguma coisa.
+
+Tivemos também vários problemas com a configuração do projeto em várias máquinas. Por exemplo, o Eurico continua com erros no seu desktop:
+
+#zebraw(
+  ```
+  [stderr]  Traceback (most recent call last):
+  [stderr]    File "/home/eurico/Cloned-Repositories/Codeberg/lsp4yap/yap.py", line 41, in <module>
+  [stderr]      from yap4py.yapi import Engine, EngineArgs
+  [stderr]    File "/home/eurico/Projects/env/lib/python3.14/site-packages/yap4py/yapi.py", line 25, in <module>
+  [stderr]      from yap4py.queries import top_query
+  [stderr]    File "/home/eurico/Projects/env/lib/python3.14/site-packages/yap4py/queries.py", line 10, in <module>
+  [stderr]      from yap4py.yap import YAPQuery
+  [stderr]  ModuleNotFoundError: No module named 'yap4py.yap'
+  [jsonrpc] D[09:21:32.141] Connection state change: `exited abnormally with code 1
+  ```,
+)
+
+Estes erros apontam para o módulo `yap4py`, do repositório `yap`, que o Eurico diz ter instalado correctamente, seguindo o guia de configuração apresentado neste relatório mais acima, com várias variações e a partir de vários repositórios de `yap` e `lsp4yap`.
+
+Enquanto que no seu portátil, o Eurico reporta outro erro, este muito mais verboso, com linhas que apontam para, por exemplo:
+
+#zebraw(
+  ```
+  /usr/local/share/Yap/yapi.yap:18:33: error: stream(0,pipe(9)):0:0: error executing prolog:throw/1
+  [...]
+  %%% domain error: consulted_at(_119) does not belong to domain implemented_option.
+  [...]
+  % info: yapi:load_files(library(maplist),[if(not_loaded),must_be_module(true),consulted_at(_119)])
+  ```,
+)
+
+Seria imprático colocar no relatório as centenas de linhas deste erro, mas o ponto é o seguinte: este projeto encontrou muitos erros de configuração e comunicação entre os vários ficheiros e programas que o compõem. O que é compreensível e até expectável, dada a dimensão e complexidade do projeto.
+
+#pagebreak()
+
 = Alternativas
 
 Seguem-se algumas alternativas que explorámos ao longo do trabalho, por vários motivos, o principal dos quais a simples exploração académica.

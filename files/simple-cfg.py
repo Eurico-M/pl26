@@ -7,11 +7,12 @@ from pygls.cli import start_server
 from pygls.lsp.server import LanguageServer
 from pygls.workspace import TextDocument
 
-# ─────────────────────────── LEXER ───────────────────────────
+DEBUG = True
 
 tokens = (
     "ATOM",
     "VARIABLE",
+    "NUMBER",
     "COMMA",
     "LPAREN",
     "RPAREN",
@@ -26,6 +27,7 @@ t_IMPLIES = r":-"
 t_PERIOD = r"\."
 t_VARIABLE = r"[A-Z_][a-zA-Z0-9_]*"
 t_ATOM = r"[a-z][a-zA-Z0-9_]*"
+t_NUMBER = r"[0-9]+"
 
 t_ignore = " \t\r"
 t_ignore_COMMENT = r"%[^\n]*"
@@ -111,18 +113,17 @@ def p_empty(p):
 
 def p_error(p):
     if p:
-        raise SyntaxError(f"Syntax error at '{p.value}' (line {p.lineno})")
-    else:
-        raise SyntaxError("Unexpected end of file")
+        raise SyntaxError(
+            f"Syntax error at '{p.value}' (line {p.lineno})",
+            ("error", p.lineno, 0, "error"),
+        )
 
 
 parser = yacc.yacc()
 
-# ─────────────────────────── LSP SERVER ───────────────────────────
 
-
-class PrologServer(LanguageServer):
-    """Simple Prolog LSP server with PLY grammar integration."""
+class PublishDiagnosticServer(LanguageServer):
+    """Language server demonstrating "push-model" diagnostics."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -132,46 +133,51 @@ class PrologServer(LanguageServer):
         diagnostics = []
 
         try:
+            lexer.lineno = 1
+
             result = parser.parse(document.source, lexer=lexer)
 
+            if DEBUG:
+                import sys
+
+                print("--- AST ---", file=sys.stderr)
+                print(result, file=sys.stderr)
+                print("--- END OF AST ---", file=sys.stderr)
+
         except SyntaxError as e:
+            if e.lineno is not None:
+                error_line = e.lineno - 1
+            else:
+                error_line = 0
+
+            line_length = len(document.lines[error_line])
+
             diagnostics.append(
                 types.Diagnostic(
                     message=str(e),
                     severity=types.DiagnosticSeverity.Error,
                     range=types.Range(
-                        start=types.Position(line=0, character=0),
-                        end=types.Position(
-                            line=len(document.lines) - 1,
-                            character=len(document.lines[-1]) if document.lines else 0,
-                        ),
+                        start=types.Position(line=error_line, character=0),
+                        end=types.Position(line=error_line, character=line_length),
                     ),
                 )
             )
 
         self.diagnostics[document.uri] = (document.version, diagnostics)
+        # logging.info("%s", self.diagnostics)
 
 
-server = PrologServer("prolog-server", "v1")
+server = PublishDiagnosticServer("diagnostic-server", "v1")
 
 
 @server.feature(types.TEXT_DOCUMENT_DID_OPEN)
-def did_open(ls: PrologServer, params: types.DidOpenTextDocumentParams):
+def did_open(ls: PublishDiagnosticServer, params: types.DidOpenTextDocumentParams):
+    """Parse each document when it is opened"""
     doc = ls.workspace.get_text_document(params.text_document.uri)
     ls.parse(doc)
-    ls._publish_diagnostics()
 
-
-@server.feature(types.TEXT_DOCUMENT_DID_CHANGE)
-def did_change(ls: PrologServer, params: types.DidChangeTextDocumentParams):
-    doc = ls.workspace.get_text_document(params.text_document.uri)
-    ls.parse(doc)
-    ls._publish_diagnostics()
-
-
-def _publish_diagnostics(self):
-    for uri, (version, diagnostics) in self.diagnostics.items():
-        self.text_document_publish_diagnostics(
+    for uri, (version, diagnostics) in ls.diagnostics.items():
+        ls.text_document_publish_diagnostics(
             types.PublishDiagnosticsParams(
                 uri=uri,
                 version=version,
@@ -180,7 +186,20 @@ def _publish_diagnostics(self):
         )
 
 
-PrologServer._publish_diagnostics = _publish_diagnostics
+@server.feature(types.TEXT_DOCUMENT_DID_CHANGE)
+def did_change(ls: PublishDiagnosticServer, params: types.DidOpenTextDocumentParams):
+    """Parse each document when it is changed"""
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    ls.parse(doc)
+
+    for uri, (version, diagnostics) in ls.diagnostics.items():
+        ls.text_document_publish_diagnostics(
+            types.PublishDiagnosticsParams(
+                uri=uri,
+                version=version,
+                diagnostics=diagnostics,
+            )
+        )
 
 
 if __name__ == "__main__":
