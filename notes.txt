@@ -1,0 +1,31 @@
+navegar para /pl36/files/
+no terminal:
+    yap
+
+no yap:
+    [global].
+    validate_file('./file.pl', E).
+    listing(def/6).
+    listing(use/9).
+
+
+erros:
+❮ swipl
+
+Welcome to SWI-Prolog (threaded, 64 bits, version 10.0.2)
+SWI-Prolog comes with ABSOLUTELY NO WARRANTY. This is free software.
+Please run ?- license. for legal details.
+
+For online help and background, visit https://www.swi-prolog.org
+For built-in help, use ?- help(Topic). or ?- apropos(Word).
+
+3 ?- [global].
+true.
+
+4 ?- validate_file('./file.pl', E).
+ERROR: Unknown procedure: current_source_module/2
+ERROR: In:
+ERROR:   [13] current_source_module(_166,user)
+ERROR:   [12] validate_file('./file.pl',_194) at /home/eurico/Cloned-Repositories/GitHub/pl26/files/global.pl:8
+ERROR:   [11] toplevel_call(user:user: ...) at /usr/lib/swipl/boot/toplevel.pl:1529
+   Exception: (13) current_source_module(_104, user) ?

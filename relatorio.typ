@@ -43,7 +43,7 @@
 ]
 
 #align(center + bottom)[
-  Docente: Vitor Costa \ \
+  Docente: Vitor Santos Costa \ \
   André Mendes up202307449 \
   Eurico Magalhães up200701520
 ]
@@ -1288,6 +1288,306 @@ Podemos, para já, ver a AST que é construída pelo PLY.
 )
 
 Podemos ver que a nossa AST é constituída por um `fact`, `p`, que tem como argumentos `a`, na linha 1, e uma `rule`, `q`, com argumentos `a` e cujo corpo é uma lista, neste caso unitária, `p` com argumentos `a`, na linha 3.
+
+#pagebreak()
+
+= Global
+
+A pedido do professor, criámos um pequeno programa, `global.pl`.
+
+Mantemos os predicados `validate_file/2`, `validate_source/3`, `validate_text/3`, `term_expansion/2`, `analyze/5`, `rule/5`, `directive/4`, `body/5`, do ficheiro `lsp.yap`.
+
+Podemos lançar este programa com o YAP, e usando como exemplo `file.pl`:
+
+#zebraw(
+  numbering: false,
+  ```bash
+  yap
+  ```,
+)
+
+#zebraw(
+  numbering: false,
+  ```YAP
+  ?- [global].
+  ?- validate_file('./file.pl', E).
+  ```,
+)
+
+Para verificar os `def` e `use` na base de dados:
+
+#zebraw(
+  numbering: false,
+  ```YAP
+  ?- listing(def/6).
+  ?- listing(use/9).
+  ```,
+)
+
+Para criar imagens de grafos, podemos criar um ficheiro DOT#footnote[https://en.wikipedia.org/wiki/DOT_(graph_description_language)], para mostrar os predicados usados por outros predicados:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  write_dot :-
+      open('graph.dot', write, Out),
+      writeln(Out, 'digraph Calls {'),
+
+      forall(use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
+          format(Out, '  "~w/~w" -> "~w/~w:~w";~n', [Caller, CallerArity, Called, CalledArity, Line])),
+
+      writeln(Out, '}'),
+      close(Out).
+  ```,
+)
+
+E usando Graphviz#footnote[https://graphviz.org/doc/info/command.html]:
+
+#zebraw(
+  numbering: false,
+  ```bash
+  dot -Tpng graph.dot -o graph.png
+  ```,
+)
+
+Obtemos o seguinte grafo:
+
+#figure(
+  image("files/graph.png", width: 60%),
+  caption: [Grafo de chamadas.],
+)
+
+Que corresponde a `file.pl`:
+
+#zebraw(
+  header: [*file.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  p(a).
+  p(X) :-
+      q(X),
+      r(X).
+  p(X) :-
+      u(X).
+
+  q(X) :-
+      r(X).
+  q(X, Y) :-
+      s(X),
+      t(Y).
+
+  r(a).
+  r(b).
+
+  s(a).
+  s(b).
+  s(c).
+
+  u(d).
+
+  v(X, Y, Z) :-
+      r(X);
+      q(Y, Z).
+  ```,
+)
+
+Os seguintes predicados foram acrescantados e são úteis à análise do documento prolog:
+
+== list_calls/1
+
+Podemos listar todos os `use`, que podemos pensar como se fossem as arestas do grafo que ligam os predicados:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  list_calls(L) :-
+      findall((Caller/CallerArity, Called/CalledArity: Line),
+          use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
+      L).
+  ```,
+)
+
+== list_by_caller/2
+
+Se estivermos interessados num único predicado que chama outros:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  list_by_caller(Caller, L) :-
+      findall((Caller/CallerArity, Called/CalledArity: Line),
+          use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
+      L).
+  ```,
+)
+
+== list_by_called/2
+
+Ou um predicado que é chamado por outros:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  list_by_called(Called, L) :-
+      findall((Caller/CallerArity, Called/CalledArity: Line),
+          use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
+      L).
+  ```,
+)
+
+== list_by_arity/2
+
+Para listar todos os predicados com uma determinada aridade:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  list_by_arity(Arity, L) :-
+      findall(Name/Arity: Line, def(Name, Arity, _, Line, _, _), L).
+  ```,
+)
+
+== entry_points/1
+
+Se um predicado é definido, mas nunca é usado, é um ponto de entrada:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  entry_points(L) :-
+      findall(Name/Arity:Line,
+          (
+              def(Name, Arity, _, Line, _, _),
+              \+ use(Name, Arity, _, _, _, _, _, _, _)
+          ),
+          L).
+  ```,
+)
+
+== undefined_calls/1
+
+De uma maneira semelhante, podemos listar os predicados que são usados mas nunca foram definidos:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  undefined_calls(L) :-
+      findall(Name/Arity:Line,
+          (
+              use(Name, Arity, _, _, _, _, Line, _, _),
+              \+ def(Name, Arity, _, _, _, _)
+          ),
+          L).
+  ```,
+)
+
+== connected/3
+
+Dados dois predicados, podemos verificar se estão "ligados", ou seja, se, transitivamente, o primeiro chama o segundo. A lista devolvida representa o caminho da chamada:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  connected(Start/StartArity, End/EndArity, Path) :-
+      connected(Start/StartArity, End/EndArity, Path, [Start/StartArity]).
+
+  connected(Start/StartArity, End/EndArity, [Start/StartArity, End/EndArity], _Visited) :-
+      use(End, EndArity, _, Start, StartArity, _, _, _, _).
+
+  connected(Start/StartArity, End/EndArity, [Start/StartArity|Rest], Visited) :-
+      use(Middle, MiddleArity, _, Start, StartArity, _, _, _, _),
+      \+ member(Middle/MiddleArity, Visited),
+      connected(Middle/MiddleArity, End/EndArity, Rest, [Middle/MiddleArity|Visited]).
+  ```,
+)
+
+== cycles/1
+
+Para detetar ciclos, podemos pensar nas chamadas como se fossem arestas dirigidas de um grafo que liga os predicados (nós). Assim, usámos o algoritmo de três cores (branco, cinzento, preto) para deteção de ciclos em grafos#footnote[https://www.geeksforgeeks.org/dsa/detect-cycle-in-a-graph/]:
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  cycles(L) :-
+      findall(Name/Arity, cycle_path(Name/Arity, [], []), L).
+
+  edge(A/Aar, B/Bar) :-
+      use(B, Bar, _, A, Aar, _, _, _, _).
+
+  cycle_path(Node, Visited, RecStack) :-
+      member(Node, RecStack),
+      !.
+
+  cycle_path(Node, Visited, RecStack) :-
+      member(Node, Visited),
+      !,
+      fail.
+
+  cycle_path(Node, Visited, RecStack) :-
+      edge(Node, Next),
+      cycle_path(Next, [Node|Visited], [Node|RecStack]).
+  ```,
+)
+
 
 #pagebreak()
 
