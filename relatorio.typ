@@ -1591,9 +1591,28 @@ Com o predicado `connected` já construído, é fácil agora fixar o nó onde co
   ```,
 )
 
-== cycles/1
+== reaches/2
 
-Como podemos pensar nos predicados como se fossem um grafo de chamadas dirigido, usámos o algoritmo de três cores (branco, cinzento, preto) para deteção de ciclos em grafos#footnote[https://www.geeksforgeeks.org/dsa/detect-cycle-in-a-graph/]. Nesta variante, não marcámos os nós com cores, mas mantemos duas listas que servem o mesmo propósito.
+Ou podemos listar todos os nós que conseguem atingir um determinado predicado.
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  reaches(End, L) :-
+      findall(Start, connected(Start, End, _), Unsorted),
+      sort(Unsorted, L).
+  ```,
+)
+
+== cycles/1 e can_cycle/1
+
+Numa primeira abordagem usámos o algoritmo de três cores (branco, cinzento, preto) para deteção de ciclos em grafos#footnote[https://www.geeksforgeeks.org/dsa/detect-cycle-in-a-graph/]. Nesta variante, não marcámos os nós com cores, mas mantemos duas listas que servem o mesmo propósito.
 
 #zebraw(
   header: [*global.pl*],
@@ -1622,6 +1641,50 @@ Como podemos pensar nos predicados como se fossem um grafo de chamadas dirigido,
   ```,
 )
 
+Esta versão é muito inspirada em programação imperativa. Percorrendo a internet, encontrámos abordagens mais lógicas#footnote[https://stackoverflow.com/questions/6721139/cycle-detection-in-a-graph]. Um predicado pode entrar em ciclo se, ao seguirmos as arestas a partir desse nó, encontrarmos um predicado que já está na lista de visitados.
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  can_cycle(L) :-
+      findall(Predicate, cycle(Predicate), L).
+
+  cycle(Start) :-
+      cycle_path(Start, []).
+
+  cycle_path(Curr, Visited) :-
+      member(Curr, Visited),
+      !.
+
+  cycle_path(Curr, Visited) :-
+      edge(Curr, Next),
+      cycle_path(Next, [Curr|Visited]).
+  ```,
+)
+
+Esta abordagem mais lógica fez-nos rever o uso do predicado `connected`: num grafo, um ciclo é quando um nó está ligado a si mesmo (directa ou indirectamente). Porque não percorrer todos os nós e verificar se conecta a si próprio?
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  cycles(L) :-
+      findall(Predicate, connected(Predicate, Predicate, _), L).
+  ```,
+)
+
+Assim, `can_cycle/1` diz-nos os predicados que podem, eventualmente, entrar em ciclo, e `cycles/1` diz-nos os predicados que, de facto, fazem parte de um ciclo.
 
 #pagebreak()
 

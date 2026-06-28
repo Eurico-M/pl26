@@ -248,24 +248,46 @@ reachable_from(Start, L) :-
     findall(End, connected(Start, End, _), Unsorted),
     sort(Unsorted, L).
 
+reaches(End, L) :-
+    findall(Start, connected(Start, End, _), Unsorted),
+    sort(Unsorted, L).
+
+
+% cycles(L) :-
+%     findall(Name/Arity, cycle_path(Name/Arity, [], []), L).
+
+% cycle_path(Node, _Visited, RecStack) :-
+%     member(Node, RecStack),
+%     !.
+
+% cycle_path(Node, Visited, _RecStack) :-
+%     member(Node, Visited),
+%     !,
+%     fail.
+
+% cycle_path(Node, Visited, RecStack) :-
+%     edge(Node, Next),
+%     cycle_path(Next, [Node|Visited], [Node|RecStack]).
+
+can_cycle(L) :-
+    findall(Predicate, cycle(Predicate), L).
+
+cycle(Start) :-
+    cycle_path(Start, []).
+
+cycle_path(Curr, Visited) :-
+    member(Curr, Visited),
+    !.
+
+cycle_path(Curr, Visited) :-
+    edge(Curr, Next),
+    cycle_path(Next, [Curr|Visited]).
+
 
 
 
 cycles(L) :-
-    findall(Name/Arity, cycle_path(Name/Arity, [], []), L).
-
-cycle_path(Node, _Visited, RecStack) :-
-    member(Node, RecStack),
-    !.
-
-cycle_path(Node, Visited, _RecStack) :-
-    member(Node, Visited),
-    !,
-    fail.
-
-cycle_path(Node, Visited, RecStack) :-
-    edge(Node, Next),
-    cycle_path(Next, [Node|Visited], [Node|RecStack]).
+    findall(Predicate, connected(Predicate, Predicate, _), L).
 
 
 
