@@ -284,10 +284,18 @@ cycle_path(Curr, Visited) :-
     cycle_path(Next, [Curr|Visited]).
 
 
+has_cycle(L) :-
+    findall(Predicate, connected(Predicate, Predicate, _), L).
 
 
 cycles(L) :-
-    findall(Predicate, connected(Predicate, Predicate, _), L).
+    findall(Normalized,
+        (
+            connected(Predicate, Predicate, Path),
+            sort(Path, Normalized)
+        ),
+        Unsorted),
+    sort(Unsorted, L).
 
 
 
