@@ -203,6 +203,12 @@ list_by_arity(Arity, L) :-
 
 
 
+
+edge(A/Aar, B/Bar) :-
+    use(B, Bar, _, A, Aar, _, _, _, _).
+
+
+
 % connected(Start/StartArity, End/EndArity) :-
 %   use(End, EndArity, _, Start, StartArity, _, _, _, _).
 
@@ -210,17 +216,37 @@ list_by_arity(Arity, L) :-
 %   use(Middle, MiddleArity, _, Start, StartArity, _, _, _, _),
 %   connected(Middle/MiddleArity, End/EndArity).
 
-connected(Start/StartArity, End/EndArity, Path) :-
-    connected(Start/StartArity, End/EndArity, Path, [Start/StartArity]).
 
-connected(Start/StartArity, End/EndArity, [Start/StartArity, End/EndArity], _Visited) :-
-    use(End, EndArity, _, Start, StartArity, _, _, _, _).
 
-connected(Start/StartArity, End/EndArity, [Start/StartArity|Rest], Visited) :-
-    use(Middle, MiddleArity, _, Start, StartArity, _, _, _, _),
-    \+ member(Middle/MiddleArity, Visited),
-    connected(Middle/MiddleArity, End/EndArity, Rest, [Middle/MiddleArity|Visited]).
+% connected(Start/StartArity, End/EndArity, Path) :-
+%     connected(Start/StartArity, End/EndArity, Path, [Start/StartArity]).
 
+% connected(Start/StartArity, End/EndArity, [Start/StartArity, End/EndArity], _Visited) :-
+%     use(End, EndArity, _, Start, StartArity, _, _, _, _).
+
+% connected(Start/StartArity, End/EndArity, [Start/StartArity|Rest], Visited) :-
+%     use(Middle, MiddleArity, _, Start, StartArity, _, _, _, _),
+%     \+ member(Middle/MiddleArity, Visited),
+%     connected(Middle/MiddleArity, End/EndArity, Rest, [Middle/MiddleArity|Visited]).
+
+
+
+connected(Start, End, Path) :-
+    connected(Start, End, Path, [Start]).
+
+connected(Start, End, [Start, End], _Visited) :-
+    edge(Start, End).
+
+connected(Start, End, [Start|Rest], Visited) :-
+    edge(Start, Middle),
+    \+ member(Middle, Visited),
+    connected(Middle, End, Rest, [Middle|Visited]).
+
+
+
+reachable_from(Start, L) :-
+    findall(End, connected(Start, End, _), Unsorted),
+    sort(Unsorted, L).
 
 
 
@@ -228,14 +254,11 @@ connected(Start/StartArity, End/EndArity, [Start/StartArity|Rest], Visited) :-
 cycles(L) :-
     findall(Name/Arity, cycle_path(Name/Arity, [], []), L).
 
-edge(A/Aar, B/Bar) :-
-    use(B, Bar, _, A, Aar, _, _, _, _).
-
-cycle_path(Node, Visited, RecStack) :-
+cycle_path(Node, _Visited, RecStack) :-
     member(Node, RecStack),
     !.
 
-cycle_path(Node, Visited, RecStack) :-
+cycle_path(Node, Visited, _RecStack) :-
     member(Node, Visited),
     !,
     fail.
@@ -243,7 +266,6 @@ cycle_path(Node, Visited, RecStack) :-
 cycle_path(Node, Visited, RecStack) :-
     edge(Node, Next),
     cycle_path(Next, [Node|Visited], [Node|RecStack]).
-
 
 
 

@@ -1359,7 +1359,7 @@ E usando Graphviz#footnote[https://graphviz.org/doc/info/command.html]:
 Obtemos o seguinte grafo:
 
 #figure(
-  image("files/graph.png", width: 60%),
+  image("images/graph.png", width: 60%),
   caption: [Grafo de chamadas.],
 )
 
@@ -1528,9 +1528,9 @@ De uma maneira semelhante, podemos listar os predicados que são usados mas nunc
   ```,
 )
 
-== connected/3
+== edge/2
 
-Dados dois predicados, podemos verificar se estão "ligados", ou seja, se, transitivamente, o primeiro chama o segundo. A lista devolvida representa o caminho da chamada:
+Para preservar a sanidade que nos resta, pensemos no predicado `use` como uma aresta do grafo de chamadas, que liga dois nós (predicados). Este predicado é útil para os próximos predicados baseados em grafos:
 
 #zebraw(
   header: [*global.pl*],
@@ -1541,22 +1541,59 @@ Dados dois predicados, podemos verificar se estão "ligados", ou seja, se, trans
   ),
   numbering-separator: true,
   ```prolog
-  connected(Start/StartArity, End/EndArity, Path) :-
-      connected(Start/StartArity, End/EndArity, Path, [Start/StartArity]).
+  edge(A/Aar, B/Bar) :-
+      use(B, Bar, _, A, Aar, _, _, _, _).
+  ```,
+)
 
-  connected(Start/StartArity, End/EndArity, [Start/StartArity, End/EndArity], _Visited) :-
-      use(End, EndArity, _, Start, StartArity, _, _, _, _).
+== connected/3
 
-  connected(Start/StartArity, End/EndArity, [Start/StartArity|Rest], Visited) :-
-      use(Middle, MiddleArity, _, Start, StartArity, _, _, _, _),
-      \+ member(Middle/MiddleArity, Visited),
-      connected(Middle/MiddleArity, End/EndArity, Rest, [Middle/MiddleArity|Visited]).
+Dados dois predicados, podemos verificar se estão "ligados", ou seja, se, transitivamente, o primeiro chama o segundo. A lista devolvida representa o caminho da chamada. Para evitar ciclos precisamos de manter uma lista de predicados visitados.
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  connected(Start, End, Path) :-
+      connected(Start, End, Path, [Start]).
+
+  connected(Start, End, [Start, End], _Visited) :-
+      edge(Start, End).
+
+  connected(Start, End, [Start|Rest], Visited) :-
+      edge(Start, Middle),
+      \+ member(Middle, Visited),
+      connected(Middle, End, Rest, [Middle|Visited]).
+  ```,
+)
+
+== reachable_from/2
+
+Com o predicado `connected` já construído, é fácil agora fixar o nó onde começamos a procura e iterar por todos os nós ligados a esse. No fim ordenamos a lista para apresentar apenas um conjunto ordenado.
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  reachable_from(Start, L) :-
+      findall(End, connected(Start, End, _), Unsorted),
+      sort(Unsorted, L).
   ```,
 )
 
 == cycles/1
 
-Para detetar ciclos, podemos pensar nas chamadas como se fossem arestas dirigidas de um grafo que liga os predicados (nós). Assim, usámos o algoritmo de três cores (branco, cinzento, preto) para deteção de ciclos em grafos#footnote[https://www.geeksforgeeks.org/dsa/detect-cycle-in-a-graph/]:
+Como podemos pensar nos predicados como se fossem um grafo de chamadas dirigido, usámos o algoritmo de três cores (branco, cinzento, preto) para deteção de ciclos em grafos#footnote[https://www.geeksforgeeks.org/dsa/detect-cycle-in-a-graph/]. Nesta variante, não marcámos os nós com cores, mas mantemos duas listas que servem o mesmo propósito.
 
 #zebraw(
   header: [*global.pl*],
@@ -1569,9 +1606,6 @@ Para detetar ciclos, podemos pensar nas chamadas como se fossem arestas dirigida
   ```prolog
   cycles(L) :-
       findall(Name/Arity, cycle_path(Name/Arity, [], []), L).
-
-  edge(A/Aar, B/Bar) :-
-      use(B, Bar, _, A, Aar, _, _, _, _).
 
   cycle_path(Node, Visited, RecStack) :-
       member(Node, RecStack),
