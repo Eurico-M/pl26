@@ -1359,7 +1359,7 @@ E usando Graphviz#footnote[https://graphviz.org/doc/info/command.html]:
 Obtemos o seguinte grafo:
 
 #figure(
-  image("images/graph.png", width: 60%),
+  image("images/graph.png", width: 80%),
   caption: [Grafo de chamadas.],
 )
 
@@ -1375,34 +1375,32 @@ Que corresponde a `file.pl`:
   numbering-separator: true,
   ```prolog
   p(a).
-  p(X) :-
-      q(X),
-      r(X).
-  p(X) :-
-      u(X).
 
   q(X) :-
-      r(X).
-  q(X, Y) :-
-      s(X),
-      t(Y).
+    r(X).
 
-  r(a).
-  r(b).
+  s(X,Y) :-
+    t(X),
+    u(Y).
 
-  s(a).
-  s(b).
-  s(c).
+  t(X) :-
+    s(X,X).
 
-  u(d).
+  v(X) :-
+    w(X).
 
-  v(X, Y, Z) :-
-      r(X);
-      q(Y, Z).
+  x(X) :-
+    y(X).
+
+  y(X) :-
+    z(X).
+
+  z(X) :-
+    x(X).
   ```,
 )
 
-Os seguintes predicados foram acrescantados e são úteis à análise do documento prolog:
+Os seguintes predicados foram acrescentados e são úteis à análise do documento prolog:
 
 == list_calls/1
 
@@ -1424,6 +1422,22 @@ Podemos listar todos os `use`, que podemos pensar como se fossem as arestas do g
   ```,
 )
 
+Aplicando ao ficheiro exemplo acima apresentado:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- list_calls(L).
+  L=[(q/1,r/1:0),(s/2,t/1:0),(s/2,u/1:0),(t/1,s/2:0),(v/1,w/1:0),(x/1,y/1:0),(y/1,z/1:0),(z/1,x/1:0)]
+      L).
+  ```,
+)
+
 == list_by_caller/2
 
 Se estivermos interessados num único predicado que chama outros:
@@ -1437,10 +1451,25 @@ Se estivermos interessados num único predicado que chama outros:
   ),
   numbering-separator: true,
   ```prolog
-  list_by_caller(Caller, L) :-
-      findall((Caller/CallerArity, Called/CalledArity: Line),
+  list_by_caller(Caller/CallerArity, L) :-
+      findall((Called/CalledArity: Line),
           use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
       L).
+  ```,
+)
+
+Por exemplo, todos os predicados chamados por `s/2`:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- list_by_caller(s/2, L).
+  L=[t/1:0,u/1:0]
   ```,
 )
 
@@ -1457,10 +1486,25 @@ Ou um predicado que é chamado por outros:
   ),
   numbering-separator: true,
   ```prolog
-  list_by_called(Called, L) :-
-      findall((Caller/CallerArity, Called/CalledArity: Line),
+  list_by_called(Called/CalledArity, L) :-
+      findall((Caller/CallerArity: Line),
           use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
       L).
+  ```,
+)
+
+Todos os predicados que chamam `r/1`:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- list_by_called(r/1, L).
+  L=[q/1:0]
   ```,
 )
 
@@ -1479,6 +1523,21 @@ Para listar todos os predicados com uma determinada aridade:
   ```prolog
   list_by_arity(Arity, L) :-
       findall(Name/Arity: Line, def(Name, Arity, _, Line, _, _), L).
+  ```,
+)
+
+Por exemplo:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- list_by_arity(2, L).
+  L=[s/2:0]
   ```,
 )
 
@@ -1505,6 +1564,21 @@ Se um predicado é definido, mas nunca é usado, é um ponto de entrada:
   ```,
 )
 
+No nosso exemplo:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- entry_points(L).
+  L=[p/1:0,q/1:0,v/1:0]
+  ```,
+)
+
 == undefined_calls/1
 
 De uma maneira semelhante, podemos listar os predicados que são usados mas nunca foram definidos:
@@ -1525,6 +1599,60 @@ De uma maneira semelhante, podemos listar os predicados que são usados mas nunc
               \+ def(Name, Arity, _, _, _, _)
           ),
           L).
+  ```,
+)
+
+Que no nosso exemplo são:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- undefined_calls(L).
+  L=[r/1:0,u/1:0,w/1:0]
+  ```,
+)
+
+== isolated/1
+
+Se um predicado não é chamado nem chama outros (mas é definido), então está isolado.
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  isolated(L) :-
+      findall(Name/Arity:Line,
+          (
+              def(Name, Arity, _, Line, _, _),
+              \+ use(Name, Arity, _, _, _, _, Line, _, _),
+              \+ use(_, _, _, Name, Arity, _, Line, _, _)
+          ),
+          L).
+  ```,
+)
+
+No nosso exemplo temos um predicado isolado:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- isolated(L).
+  L=[p/1:0]
   ```,
 )
 
@@ -1610,7 +1738,7 @@ Ou podemos listar todos os nós que conseguem atingir um determinado predicado.
   ```,
 )
 
-== cycles/1 e can_cycle/1
+== has_cycle/1 e can_cycle/1
 
 Numa primeira abordagem usámos o algoritmo de três cores (branco, cinzento, preto) para deteção de ciclos em grafos#footnote[https://www.geeksforgeeks.org/dsa/detect-cycle-in-a-graph/]. Nesta variante, não marcámos os nós com cores, mas mantemos duas listas que servem o mesmo propósito.
 
@@ -1679,12 +1807,51 @@ Esta abordagem mais lógica fez-nos rever o uso do predicado `connected`: num gr
   ),
   numbering-separator: true,
   ```prolog
-  cycles(L) :-
+  has_cycle(L) :-
       findall(Predicate, connected(Predicate, Predicate, _), L).
   ```,
 )
 
-Assim, `can_cycle/1` diz-nos os predicados que podem, eventualmente, entrar em ciclo, e `cycles/1` diz-nos os predicados que, de facto, fazem parte de um ciclo.
+Assim, `can_cycle/1` diz-nos os predicados que podem, eventualmente, entrar em ciclo, e `has_cycle/1` diz-nos os predicados que, de facto, fazem parte de um ciclo.
+
+== cycles/1
+
+Se alterarmos o predicado anterior `has_cycle/1` para, em vez de apresentar predicados, apresentar os caminhos, e se normalizarmos esses caminhos, ficamos com uma lista de listas, e cada uma dessas listas é um ciclo.
+
+#zebraw(
+  header: [*global.pl*],
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering-separator: true,
+  ```prolog
+  cycles(L) :-
+      findall(Normalized,
+          (
+              connected(Predicate, Predicate, Path),
+              sort(Path, Normalized)
+          ),
+          Unsorted),
+      sort(Unsorted, L).
+  ```,
+)
+
+Assim, no nosso exemplo, podemos observar os dois ciclos:
+
+#zebraw(
+  highlight-lines: (),
+  comment-flag: "",
+  comment-font-args: (
+    style: "italic",
+  ),
+  numbering: false,
+  ```yap
+  ?- cycles(L).
+  L=[[s/2,t/1],[x/1,y/1,z/1]]
+  ```,
+)
 
 #pagebreak()
 

@@ -1,27 +1,23 @@
 p(a).
-p(X) :-
-    q(X),
-    r(X).
-p(X) :-
-    u(X).
 
 q(X) :-
-    r(X).
-q(X) :-
-    s(X),
-    t(X).
+  r(X).
 
-r(a).
-r(b).
+s(X,Y) :-
+  t(X),
+  u(Y).
 
-s(a).
-s(b).
-s(c).
-s(X) :-
-    v(X, X, X).
+t(X) :-
+  s(X,X).
 
-u(d).
+v(X) :-
+  w(X).
 
-v(X, Y, Z) :-
-    r(X);
-    q(Z).
+x(X) :-
+  y(X).
+
+y(X) :-
+  z(X).
+
+z(X) :-
+  x(X).

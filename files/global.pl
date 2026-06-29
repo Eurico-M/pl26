@@ -169,13 +169,13 @@ list_calls(L) :-
         use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
     L).
 
-list_by_caller(Caller, L) :-
-    findall((Caller/CallerArity, Called/CalledArity: Line),
+list_by_caller(Caller/CallerArity, L) :-
+    findall((Called/CalledArity: Line),
         use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
     L).
 
-list_by_called(Called, L) :-
-    findall((Caller/CallerArity, Called/CalledArity: Line),
+list_by_called(Called/CalledArity, L) :-
+    findall((Caller/CallerArity: Line),
         use(Called, CalledArity, _, Caller, CallerArity, _, Line, _, _),
     L).
 
@@ -194,6 +194,16 @@ undefined_calls(L) :-
         (
             use(Name, Arity, _, _, _, _, Line, _, _),
             \+ def(Name, Arity, _, _, _, _)
+        ),
+        L).
+
+
+isolated(L) :-
+    findall(Name/Arity:Line,
+        (
+            def(Name, Arity, _, Line, _, _),
+            \+ use(Name, Arity, _, _, _, _, Line, _, _),
+            \+ use(_, _, _, Name, Arity, _, Line, _, _)
         ),
         L).
 
