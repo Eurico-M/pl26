@@ -310,8 +310,8 @@ cycles(L) :-
 
 
 
-write_dot :-
-    open('graph.dot', write, Out),
+write_dot(FileName) :-
+    open(FileName, write, Out),
     writeln(Out, 'digraph Calls {'),
 
     forall(def(Name, Arity, _, _, _, _),
